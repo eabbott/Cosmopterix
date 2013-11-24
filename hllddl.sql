@@ -2,7 +2,7 @@
 CREATE TABLE hll
 (
   hash         bigint           NOT NULL
-, registers    varbinary(99)    NOT NULL
+, registers    varbinary(88)    NOT NULL
 , CONSTRAINT hll_hash_pk PRIMARY KEY
   (
     hash
@@ -16,3 +16,6 @@ PARTITION PROCEDURE HllSet ON TABLE hll COLUMN hash;
 
 CREATE PROCEDURE FROM CLASS org.eabbott.volthll.procedures.HllMerge;
 PARTITION PROCEDURE HllMerge ON TABLE hll COLUMN hash;
+
+CREATE PROCEDURE FROM CLASS org.eabbott.volthll.procedures.HllGetAll;
+CREATE PROCEDURE FROM CLASS org.eabbott.volthll.procedures.HllDeleteAll;

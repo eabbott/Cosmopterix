@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
-APPNAME="volthll"
+####### Modify these as required #######
 VOLTDB_BIN="/opt/voltdb/bin"
 VOLTDB_LIB="/opt/voltdb/lib"
 VOLTDB_VOLTDB="/opt/voltdb/voltdb"
 MURMUR_LIB="/Users/eabbott/.m2/repository/com/clearspring/analytics/stream/2.4.0/"
+########## Done modifications ##########
+
+APPNAME="volthll"
 
 APPCLASSPATH=$CLASSPATH:$({ \
     \ls -1 "$VOLTDB_VOLTDB"/voltdb-*.jar; \
@@ -56,53 +59,17 @@ function server() {
         license $LICENSE host $HOST
 }
 
-# run the client that drives the example
-function client() {
-    benchmark
-}
-
-# Benchmark sample
-# Use this target for argument help
-function benchmark-help() {
-    srccompile
-    java -classpath obj:$APPCLASSPATH:obj voltcache.Benchmark --help
-}
-
-function benchmark() {
-    srccompile
-    java -classpath obj:$APPCLASSPATH:obj -Dlog4j.configuration=file://$LOG4J \
-        voltcache.Benchmark \
-        --threads=40 \
-        --displayinterval=5 \
-        --duration=120 \
-        --servers=localhost \
-        --poolsize=100000 \
-        --preload=true \
-        --getputratio=0.90 \
-        --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
-        --usecompression=false
-}
-
-# Help on the Memcached Interface Server
-function memcached-interface-help() {
-    srccompile
-    java -classpath obj:$APPCLASSPATH:obj voltcache.api.MemcachedInterfaceServer --help
-}
-
-# Provides a sample protocol transalation between VoltCache and Memcached, allowing
-# client applications using a Memcached client to run on VoltCache without any code
-# change (Text Protocol only)
-function memcached-interface() {
-    srccompile
-    java -classpath obj:$APPCLASSPATH:obj voltcache.api.MemcachedInterfaceServer \
-        --vservers=localhost \
-        --mport=11211
+# run the voltdb server locally
+function server2() {
+    # if a catalog doesn't exist, build one
+    if [ ! -f $APPNAME.jar ]; then catalog; fi
+    # run the server
+    $VOLTDB create catalog $APPNAME.jar deployment deployment2.xml \
+        license $LICENSE host $HOST port 21270 internalport 21272 replicationport 21273 zkport 21276 adminport 21277
 }
 
 function help() {
-    echo "Usage: ./run.sh {clean|catalog|server|benchmark|benchmark-help}"
+    echo "Usage: ./run.sh {clean|catalog|server|server2}"
 }
 
 # Run the target passed as the first arg on the command line

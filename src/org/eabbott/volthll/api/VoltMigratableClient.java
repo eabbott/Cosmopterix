@@ -1,58 +1,128 @@
 package org.eabbott.volthll.api;
 
-import org.voltdb.client.Client;
 import org.voltdb.client.ClientResponse;
 
 /**
- * Features
- * - zk for configuration
- * @author eabbott@hubspot.com
- *
+ * This client was broken out to support two simultaneous backends for use
+ * during instance migration. The expected usage is an external resource
+ * such as zookeeper would trigger the connection configuration to be updated on the fly.
  */
 public class VoltMigratableClient {
-  private VoltConnectionConfig primary = null;
-  private VoltConnectionConfig backup = null;
+  public final static String LEFT = "left";
+  public final static String RIGHT = "right";
+  private VoltConnectionConfig left = null;
+  private VoltConnectionConfig right = null;
 
-  public synchronized void setPrimary(VoltConnectionConfig config) {
-    if (config != null && config.isConnectionValid()) {
-      primary = config;
+  public synchronized void setLeft(VoltConnectionConfig config) throws Exception {
+    if (config != null && !config.isConnectionValid()) {
+      throw new Exception("Invalid config passed to left");
+    }
+    left = config;
+  }
+
+  public synchronized void setRight(VoltConnectionConfig config) throws Exception {
+    if (config != null && !config.isConnectionValid()) {
+      throw new Exception("Invalid config passed to right");
+    }
+    right = config;
+  }
+
+  public synchronized void setPrimary(String side) throws Exception {
+    if (LEFT.equals(side)) {
+      if (this.left == null) {
+        throw new Exception("Cannot set primary to unset left connection");
+      } else if (!this.left.isConnectionValid()) {
+        throw new Exception("Cannot set primary to invalid left connection");
+      }
+      this.left.setPrimary(true);
+      if (this.right != null) { this.right.setPrimary(false); }
+    } else if (RIGHT.equals(side)) {
+      if (this.right == null) {
+        throw new Exception("Cannot set primary to unset right connection");
+      } else if (!this.right.isConnectionValid()) {
+        throw new Exception("Cannot set primary to invalid right connection");
+      }
+      this.right.setPrimary(true);
+      if (this.left != null) { this.left.setPrimary(false); }
     }
   }
 
-  public synchronized void setBackup(VoltConnectionConfig config) throws Exception {
-    if (config != null && !config.isConnectionValid()) {
-      throw new Exception("Invalid config passed to backup");
-    }
-    backup = config;
+  public VoltConnectionConfig getPrimary() {
+    return left != null && left.isPrimary() ? left : right;
+  }
+
+  public VoltConnectionConfig getSecondary() {
+    return left != null && left.isPrimary() ? right : left;
   }
 
   // runs on both connections
   public void write(String procedure, Object... params) throws Exception
   {
-    Client primary = null;
-    Client backup = null;
+    VoltConnectionConfig primary = null;
+    VoltConnectionConfig secondary = null;
     synchronized (this) {
-      primary = this.primary.client;
-      if (this.backup != null) {
-        backup = this.backup.client;
-      }
+      primary = getPrimary();
+      secondary = getSecondary();
     }
  
-    primary.callProcedure(procedure, params);
-    if (backup != null) {
-      backup.callProcedure(procedure, params);
+    if (primary != null) {
+      primary.client.callProcedure(procedure, params);
+    }
+    if (secondary != null) {
+      secondary.client.callProcedure(procedure, params);
     }
   }
   
   // runs on just primary
   public ClientResponse read(String procedure, Object... params) throws Exception
   {
-    Client primary = null;
+    VoltConnectionConfig primary = null;
     synchronized (this) {
-      primary = this.primary.client;
+      primary = getPrimary();
     }
-    return primary.callProcedure(procedure, params);
+    return primary.client.callProcedure(procedure, params);
   }
 
+  // To be used during migrations, write only to the secondary client
+  public void writeSecondary(String procedure, Object... params) throws Exception
+  {
+    VoltConnectionConfig secondary = null;
+    synchronized (this) {
+      secondary = getSecondary();
+    }
+ 
+    if (secondary != null) {
+      secondary.client.callProcedure(procedure, params);
+    }
+  }
 
+  // To be used for testing and/or as a read slave?
+  public ClientResponse readSecondary(String procedure, Object... params) throws Exception
+  {
+    VoltConnectionConfig secondary = null;
+    synchronized (this) {
+      secondary = getSecondary();
+    }
+
+    if (secondary != null) {
+      return secondary.client.callProcedure(procedure, params);
+    }
+    return null;
+  }
+
+  public void close() throws Exception {
+    VoltConnectionConfig primary = null;
+    VoltConnectionConfig secondary = null;
+    synchronized (this) {
+      primary = getPrimary();
+      secondary = getSecondary();
+    }
+ 
+    if (primary != null) {
+      primary.client.close();
+    }
+    if (secondary != null) {
+      secondary.client.close();
+    }
+  }
 }

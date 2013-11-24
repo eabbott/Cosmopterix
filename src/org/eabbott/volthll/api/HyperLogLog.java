@@ -54,7 +54,7 @@ public class HyperLogLog
     private final int count;
     private final double alphaMM;
     private final HashFunction hash;
-    private final VoltHll volt;
+    private final VoltBackend volt;
 
 
     /**
@@ -67,7 +67,7 @@ public class HyperLogLog
      * @param keyHash - hash function for the key
      * @param memberHash - hash function for the members
      */
-    public HyperLogLog(int log2m, HashFunction hash, VoltHll volt)
+    public HyperLogLog(int log2m, HashFunction hash, VoltBackend volt)
     {
         this.log2m = log2m;
         this.hash = hash;
@@ -91,6 +91,8 @@ public class HyperLogLog
         }
     }
 
+    public HashFunction getHashFunction() { return hash; }
+
     private static int calculateCountFromLog2m(int log2m) {
         return (int) Math.pow(2, log2m);
     }
@@ -104,7 +106,20 @@ public class HyperLogLog
     }
 
     public long estimatedCardinality(final Object key) throws Exception {
-      return cardinality(new RegisterSet(volt.get(hash.keyHash(key))));
+      int[] registers = volt.get(hash.keyHash(key));
+      return registers == null ? 0 : cardinality(new RegisterSet(registers));
+    }
+
+    public long estimatedCardinalityFromSecondary(final Object key) throws Exception {
+      int[] registers = volt.getFromSecondary(hash.keyHash(key));
+      return registers == null ? 0 : cardinality(new RegisterSet(registers));
+    }
+
+    // Should only be for testing..
+    public void showCardinalities(final long key) throws Exception {
+      long primary = cardinality(new RegisterSet(volt.get(key)));
+      long secondary = cardinality(new RegisterSet(volt.getFromSecondary(key)));
+      System.out.println("key["+ key +"]: "+ primary +", "+ secondary);
     }
 
     public int getCount() {
